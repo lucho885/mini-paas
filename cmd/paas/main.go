@@ -12,6 +12,8 @@ import (
 
 	"mini-paas/internal/api"
 	"mini-paas/internal/app"
+	"mini-paas/internal/deploy"
+	"mini-paas/internal/docker"
 
 	// El guion bajo importa el paquete solo por su efecto secundario: al
 	// cargarse, el driver se registra a sí mismo bajo el nombre "pgx" en
@@ -57,7 +59,8 @@ func main() {
 
 	// Cableado de dependencias: repositorio -> handler -> rutas.
 	apps := app.NewRepository(db)
-	api.NewHandler(apps, logger).Register(mux)
+	deployer := deploy.NewDeployer(apps, docker.NewClient(), "", logger)
+	api.NewHandler(apps, deployer, logger).Register(mux)
 
 	addr := ":8080"
 	logger.Info("servidor escuchando", "addr", addr)

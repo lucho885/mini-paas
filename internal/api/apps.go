@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"mini-paas/internal/app"
+	"mini-paas/internal/deploy"
 
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -19,12 +20,13 @@ import (
 // habitual en Go en vez de variables globales: los handlers son métodos y
 // acceden a lo que necesitan a través del receptor.
 type Handler struct {
-	apps   *app.Repository
-	logger *slog.Logger
+	apps     *app.Repository
+	deployer *deploy.Deployer
+	logger   *slog.Logger
 }
 
-func NewHandler(apps *app.Repository, logger *slog.Logger) *Handler {
-	return &Handler{apps: apps, logger: logger}
+func NewHandler(apps *app.Repository, deployer *deploy.Deployer, logger *slog.Logger) *Handler {
+	return &Handler{apps: apps, deployer: deployer, logger: logger}
 }
 
 // Register añade las rutas al mux. Los patrones "MÉTODO /ruta/{param}" son de
@@ -34,6 +36,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /apps", h.list)
 	mux.HandleFunc("GET /apps/{id}", h.get)
 	mux.HandleFunc("DELETE /apps/{id}", h.delete)
+	mux.HandleFunc("POST /apps/{id}/deploy", h.startDeploy)
+	mux.HandleFunc("GET /apps/{id}/deployments", h.listDeployments)
 }
 
 // createRequest es el cuerpo esperado en POST /apps. Es un struct aparte del
