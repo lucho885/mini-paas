@@ -15,6 +15,7 @@ const (
 	StatusBuilding = "building"
 	StatusRunning  = "running"
 	StatusFailed   = "failed"
+	StatusStopped  = "stopped"
 )
 
 // deploymentColumns evita repetir la lista de columnas en cada consulta.
