@@ -21,7 +21,10 @@ func (c *Client) Build(ctx context.Context, contextDir, tag string) error {
 
 // Run arranca un contenedor en segundo plano y devuelve su ID.
 func (c *Client) Run(ctx context.Context, tag, name string, hostPort, containerPort int) (string, error) {
+	// --restart unless-stopped: Docker lo vuelve a arrancar tras un reinicio del
+	// equipo o del daemon, salvo que lo hayamos parado nosotros con Stop.
 	out, err := c.run(ctx, "run", "-d", "--name", name,
+		"--restart", "unless-stopped",
 		"-p", fmt.Sprintf("%d:%d", hostPort, containerPort), tag)
 	if err != nil {
 		return "", err
