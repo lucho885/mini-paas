@@ -11,5 +11,20 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  # Proxy inverso. network_mode: host hace que comparta la red de tu máquina:
+  # así alcanza los puertos localhost de los contenedores de las apps y su API
+  # de administración (localhost:2019) no queda expuesta a la red.
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    network_mode: host
+    command: caddy run --config /etc/caddy/caddy.json
+    volumes:
+      - ./caddy/caddy.json:/etc/caddy/caddy.json:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
 volumes:
   pgdata:
+  caddy_data:
+  caddy_config:
