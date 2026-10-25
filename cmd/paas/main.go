@@ -14,6 +14,7 @@ import (
 	"mini-paas/internal/app"
 	"mini-paas/internal/deploy"
 	"mini-paas/internal/docker"
+	"mini-paas/internal/proxy"
 
 	// El guion bajo importa el paquete solo por su efecto secundario: al
 	// cargarse, el driver se registra a sí mismo bajo el nombre "pgx" en
@@ -21,14 +22,20 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
+// getEnv lee una variable de entorno y devuelve def si no está definida o está
+// vacía.
+func getEnv(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
 func main() {
 	// slog es el logger estructurado de la librería estándar.
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		dsn = "postgres://paas:paas@localhost:5432/paas"
-	}
+	dsn := getEnv("DATABASE_URL", "postgres://paas:paas@localhost:5432/paas")
 
 	// sql.Open NO conecta todavía: solo prepara el pool. Por eso hacemos Ping.
 	db, err := sql.Open("pgx", dsn)
@@ -59,7 +66,9 @@ func main() {
 
 	// Cableado de dependencias: repositorio -> handler -> rutas.
 	apps := app.NewRepository(db)
-	deployer := deploy.NewDeployer(apps, docker.NewClient(), "", logger)
+	caddy := proxy.NewClient(getEnv("CADDY_ADMIN", "http://localhost:2019"))
+	domain := getEnv("PAAS_DOMAIN", "localhost")
+	deployer := deploy.NewDeployer(apps, docker.NewClient(), caddy, domain, "", logger)
 	api.NewHandler(apps, deployer, logger).Register(mux)
 
 	addr := ":8080"

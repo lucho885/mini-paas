@@ -17,6 +17,7 @@ import (
 
 	"mini-paas/internal/app"
 	"mini-paas/internal/docker"
+	"mini-paas/internal/proxy"
 )
 
 const (
@@ -33,12 +34,14 @@ var validName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 type Deployer struct {
 	apps    *app.Repository
 	docker  *docker.Client
+	proxy   *proxy.Client
+	domain  string // dominio base: la app "hola" se publica en hola.<domain>
 	workDir string // dónde se clonan los repos; "" usa el directorio temporal del sistema
 	logger  *slog.Logger
 }
 
-func NewDeployer(apps *app.Repository, docker *docker.Client, workDir string, logger *slog.Logger) *Deployer {
-	return &Deployer{apps: apps, docker: docker, workDir: workDir, logger: logger}
+func NewDeployer(apps *app.Repository, docker *docker.Client, caddy *proxy.Client, domain, workDir string, logger *slog.Logger) *Deployer {
+	return &Deployer{apps: apps, docker: docker, proxy: caddy, domain: domain, workDir: workDir, logger: logger}
 }
 
 // Start lanza el despliegue en segundo plano y vuelve al instante.
@@ -116,6 +119,18 @@ func (d *Deployer) deploy(ctx context.Context, a app.App, dep app.Deployment) er
 	if err != nil {
 		return err
 	}
+
+	// Publicamos la URL estable <app>.<dominio> apuntando al puerto nuevo. Si
+	// ya existía (redeploy), SetRoute la reemplaza. Sin ruta la app no se
+	// alcanzaría por su URL, así que si falla paramos el contenedor nuevo.
+	host := a.Name + "." + d.domain
+	if err := d.proxy.SetRoute(ctx, host, hostPort); err != nil {
+		if stopErr := d.docker.Stop(ctx, containerID); stopErr != nil {
+			d.logger.Warn("parar contenedor sin ruta", "container", containerID, "error", stopErr)
+		}
+		return fmt.Errorf("registrar ruta: %w", err)
+	}
+
 	if err := d.apps.MarkRunning(ctx, dep.ID, containerID, hostPort); err != nil {
 		return err
 	}
