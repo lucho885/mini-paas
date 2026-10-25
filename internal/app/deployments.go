@@ -19,7 +19,7 @@ const (
 )
 
 // deploymentColumns evita repetir la lista de columnas en cada consulta.
-const deploymentColumns = `id, app_id, status, container_id, host_port, created_at`
+const deploymentColumns = `id, app_id, status, container_id, host_port, error, created_at`
 
 // scanDeployment lee una fila en un Deployment. Recibe una interfaz mínima en
 // vez de *sql.Row o *sql.Rows: ambos tienen el método Scan, así que sirve para
@@ -29,7 +29,7 @@ const deploymentColumns = `id, app_id, status, container_id, host_port, created_
 // campo en nil cuando la columna es NULL, y lo rellena cuando hay valor.
 func scanDeployment(row interface{ Scan(dest ...any) error }) (Deployment, error) {
 	var d Deployment
-	err := row.Scan(&d.ID, &d.AppID, &d.Status, &d.ContainerID, &d.HostPort, &d.CreatedAt)
+	err := row.Scan(&d.ID, &d.AppID, &d.Status, &d.ContainerID, &d.HostPort, &d.Error, &d.CreatedAt)
 	return d, err
 }
 
@@ -55,6 +55,33 @@ func (r *Repository) UpdateStatus(ctx context.Context, id int64, status string) 
 	n, err := res.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("actualizar estado: %w", err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// maxErrorLen limita el motivo guardado: la salida de un docker build fallido
+// puede ser enorme.
+const maxErrorLen = 2000
+
+// MarkFailed pasa el deployment a failed y guarda el motivo.
+func (r *Repository) MarkFailed(ctx context.Context, id int64, reason string) error {
+	// Se corta por runas (caracteres), no por bytes: cortar un carácter UTF-8
+	// por la mitad dejaría un texto inválido que Postgres rechazaría.
+	if runes := []rune(reason); len(runes) > maxErrorLen {
+		reason = string(runes[:maxErrorLen]) + "…"
+	}
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE deployments SET status = $1, error = $2 WHERE id = $3`,
+		StatusFailed, reason, id)
+	if err != nil {
+		return fmt.Errorf("marcar failed: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("marcar failed: %w", err)
 	}
 	if n == 0 {
 		return ErrNotFound
@@ -111,7 +138,7 @@ type RunningDeployment struct {
 // antiguos a los más recientes.
 func (r *Repository) ListRunning(ctx context.Context) ([]RunningDeployment, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT d.id, d.app_id, d.status, d.container_id, d.host_port, d.created_at, a.name
+		`SELECT d.id, d.app_id, d.status, d.container_id, d.host_port, d.error, d.created_at, a.name
 		 FROM deployments d JOIN apps a ON a.id = d.app_id
 		 WHERE d.status = $1 ORDER BY d.id`, StatusRunning)
 	if err != nil {
@@ -122,7 +149,7 @@ func (r *Repository) ListRunning(ctx context.Context) ([]RunningDeployment, erro
 	var out []RunningDeployment
 	for rows.Next() {
 		var rd RunningDeployment
-		err := rows.Scan(&rd.ID, &rd.AppID, &rd.Status, &rd.ContainerID, &rd.HostPort, &rd.CreatedAt, &rd.AppName)
+		err := rows.Scan(&rd.ID, &rd.AppID, &rd.Status, &rd.ContainerID, &rd.HostPort, &rd.Error, &rd.CreatedAt, &rd.AppName)
 		if err != nil {
 			return nil, fmt.Errorf("leer deployment activo: %w", err)
 		}

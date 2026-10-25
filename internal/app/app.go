@@ -32,5 +32,6 @@ type Deployment struct {
 	Status      string    `json:"status"`
 	ContainerID *string   `json:"container_id"`
 	HostPort    *int      `json:"host_port"`
+	Error       *string   `json:"error"` // motivo del fallo; nil si no ha fallado
 	CreatedAt   time.Time `json:"created_at"`
 }

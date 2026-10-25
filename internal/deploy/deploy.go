@@ -65,7 +65,7 @@ func (d *Deployer) Start(a app.App, dep app.Deployment) {
 			// usamos un contexto nuevo y corto.
 			saveCtx, saveCancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer saveCancel()
-			if err := d.apps.UpdateStatus(saveCtx, dep.ID, app.StatusFailed); err != nil {
+			if err := d.apps.MarkFailed(saveCtx, dep.ID, err.Error()); err != nil {
 				log.Error("guardar estado failed", "error", err)
 			}
 			return
