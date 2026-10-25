@@ -3,6 +3,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -63,6 +64,21 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	req.RepoURL = strings.TrimSpace(req.RepoURL)
 	if req.Name == "" || req.RepoURL == "" {
 		writeError(w, http.StatusBadRequest, "name y repo_url son obligatorios")
+		return
+	}
+
+	// Rechazamos aquí un repo inexistente, en vez de descubrirlo al desplegar.
+	if err := deploy.CheckRepo(r.Context(), req.RepoURL); err != nil {
+		switch {
+		case errors.Is(err, deploy.ErrInvalidRepoURL):
+			writeError(w, http.StatusBadRequest, err.Error())
+		case errors.Is(err, deploy.ErrRepoUnreachable):
+			writeError(w, http.StatusBadRequest, "no se pudo acceder al repositorio: comprueba que la URL existe y es pública")
+		case errors.Is(err, context.DeadlineExceeded):
+			writeError(w, http.StatusGatewayTimeout, "el servidor git tardó demasiado en responder")
+		default:
+			h.internalError(w, err)
+		}
 		return
 	}
 

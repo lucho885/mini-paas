@@ -44,7 +44,8 @@ Go 1.22+, Docker y git.
 | `PAAS_ADDR` | `:8080` | Dirección donde escucha la API |
 
 ## Requisitos de las apps
-- El repo debe ser público, con URL `https://`.
+- El repo debe ser público, con URL `https://`. `POST /apps` comprueba con
+  `git ls-remote` que existe y responde 400 si no se puede acceder a él.
 - Debe tener un `Dockerfile` en la raíz.
 - La app debe escuchar en el puerto **8080** dentro del contenedor. La plataforma
   también le pasa `PORT=8080` como variable de entorno.
@@ -52,7 +53,8 @@ Go 1.22+, Docker y git.
 
 ## Probar
     curl localhost:8080/healthz
-    curl -X POST localhost:8080/apps -d '{"name":"hola","repo_url":"https://github.com/x/y"}'
+    # repo_url debe ser un repositorio público real con Dockerfile
+    curl -X POST localhost:8080/apps -d '{"name":"hola","repo_url":"https://github.com/TU_USUARIO/TU_REPO.git"}'
     curl localhost:8080/apps
     curl -X POST localhost:8080/apps/1/deploy        # responde 202
     curl localhost:8080/apps/1/deployments           # repetir hasta ver "running"
