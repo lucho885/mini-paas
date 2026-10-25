@@ -12,7 +12,7 @@ plataforma la clona, la construye con Docker y la publica detrás de Caddy en
 - [x] Wrapper de Docker (`internal/docker`)
 - [x] Deploy orquestado en segundo plano (`internal/deploy`)
 - [x] Integración con Caddy (`internal/proxy`): URL estable por app
-- [ ] Reconstruir las rutas de Caddy desde la base de datos al arrancar
+- [x] Reconstruir las rutas de Caddy desde la base de datos al arrancar
 - [ ] Variables de entorno por app y logs
 - [ ] Tests
 
@@ -40,6 +40,7 @@ Go 1.22+, Docker y git.
 | `DATABASE_URL` | `postgres://paas:paas@localhost:5432/paas` | Conexión a Postgres |
 | `CADDY_ADMIN` | `http://localhost:2019` | API de administración de Caddy |
 | `PAAS_DOMAIN` | `localhost` | Dominio base: la app `hola` se publica en `hola.<dominio>` |
+| `PAAS_ADDR` | `:8080` | Dirección donde escucha la API |
 
 ## Requisitos de las apps
 - El repo debe ser público, con URL `https://`.
@@ -57,8 +58,9 @@ Go 1.22+, Docker y git.
     curl -X DELETE localhost:8080/apps/1             # para el contenedor y quita la ruta
 
 ## Límites conocidos
-- Las rutas viven en la memoria de Caddy: si reinicias su contenedor se pierden
-  hasta que redespliegues cada app (pendiente: reconstruirlas desde la base de datos).
+- Las rutas viven en la memoria de Caddy. Al arrancar, el servidor las reconstruye
+  desde la base de datos (y marca `stopped` los deployments cuyo contenedor ya no
+  existe), pero si reinicias solo Caddy hay que reiniciar también el servidor.
 - Si el servidor se detiene en mitad de un deploy, ese deployment queda en `building`.
 - La API de administración de Caddy (:2019) no tiene autenticación; solo es
   accesible desde la propia máquina (`network_mode: host`).
