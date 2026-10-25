@@ -67,17 +67,20 @@ func NewClient(baseURL string) *Client {
 	}
 }
 
+const routesPath = "/config/apps/http/servers/srv0/routes"
+
 // SetRoute hace que host apunte a localhost:port. Sirve tanto para crear la
-// ruta como para reemplazarla en un redeploy: borra la anterior (si existe) y
-// añade la nueva, así nunca queda duplicada.
+// ruta como para reemplazarla en un redeploy.
+//
+// Primero intenta un PATCH sobre el @id: Caddy sustituye la ruta entera de una
+// sola vez, sin un instante en el que la app se quede sin ruta, y si falla la
+// ruta anterior sigue intacta. Solo si no existía (404, primer deploy) la crea
+// con un POST. El cuerpo del PATCH debe ser siempre la ruta completa.
 func (c *Client) SetRoute(ctx context.Context, host string, port int) error {
 	host = strings.ToLower(host) // el match de Caddy ignora mayúsculas, el @id no
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if err := c.remove(ctx, host); err != nil {
-		return err
-	}
 	r := route{
 		ID:    routeID(host),
 		Match: []match{{Host: []string{host}}},
@@ -86,8 +89,16 @@ func (c *Client) SetRoute(ctx context.Context, host string, port int) error {
 			Upstreams: []upstream{{Dial: fmt.Sprintf("localhost:%d", port)}},
 		}},
 	}
-	if err := c.do(ctx, http.MethodPost, "/config/apps/http/servers/srv0/routes", r); err != nil {
-		return fmt.Errorf("añadir ruta %s: %w", host, err)
+	path := "/id/" + url.PathEscape(r.ID)
+	err := c.do(ctx, http.MethodPatch, path, r)
+
+	// errors.As recorre la cadena de errores buscando un *StatusError.
+	var se *StatusError
+	if errors.As(err, &se) && se.Code == http.StatusNotFound {
+		err = c.do(ctx, http.MethodPost, routesPath, r) // primer deploy: aún no existe
+	}
+	if err != nil {
+		return fmt.Errorf("fijar ruta %s: %w", host, err)
 	}
 	return nil
 }
