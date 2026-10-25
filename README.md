@@ -13,7 +13,7 @@ plataforma la clona, la construye con Docker y la publica detrás de Caddy en
 - [x] Deploy orquestado en segundo plano (`internal/deploy`)
 - [x] Integración con Caddy (`internal/proxy`): URL estable por app
 - [x] Reconstruir las rutas de Caddy desde la base de datos al arrancar
-- [ ] Variables de entorno por app y logs
+- [x] Variables de entorno por app, logs del contenedor y motivo de fallo del deploy
 - [ ] Tests
 
 ## Cómo funciona
@@ -32,6 +32,7 @@ Go 1.22+, Docker y git.
 ## Cómo correrlo
     docker compose up -d          # Postgres y Caddy
     docker compose exec -T postgres psql -U paas -d paas < migrations/001_init.sql
+    docker compose exec -T postgres psql -U paas -d paas < migrations/002_env_and_errors.sql
     go run ./cmd/paas
 
 ## Variables de entorno
@@ -45,7 +46,8 @@ Go 1.22+, Docker y git.
 ## Requisitos de las apps
 - El repo debe ser público, con URL `https://`.
 - Debe tener un `Dockerfile` en la raíz.
-- La app debe escuchar en el puerto **8080** dentro del contenedor.
+- La app debe escuchar en el puerto **8080** dentro del contenedor. La plataforma
+  también le pasa `PORT=8080` como variable de entorno.
 - El nombre solo admite minúsculas, números y guiones (es parte del subdominio).
 
 ## Probar
@@ -55,13 +57,22 @@ Go 1.22+, Docker y git.
     curl -X POST localhost:8080/apps/1/deploy        # responde 202
     curl localhost:8080/apps/1/deployments           # repetir hasta ver "running"
     curl http://hola.localhost                       # la app, vía Caddy
+    curl -X PUT localhost:8080/apps/1/env -d '{"GREETING":"hola"}'   # reemplaza TODAS las variables
+    curl localhost:8080/apps/1/env                   # se aplican en el próximo deploy
+    curl "localhost:8080/apps/1/logs?tail=100"       # últimas líneas del contenedor activo
     curl -X DELETE localhost:8080/apps/1             # para el contenedor y quita la ruta
+
+Si un deploy queda en `failed`, el motivo está en el campo `error` de
+`GET /apps/{id}/deployments`.
 
 ## Límites conocidos
 - Las rutas viven en la memoria de Caddy. Al arrancar, el servidor las reconstruye
   desde la base de datos (y marca `stopped` los deployments cuyo contenedor ya no
   existe), pero si reinicias solo Caddy hay que reiniciar también el servidor.
 - Si el servidor se detiene en mitad de un deploy, ese deployment queda en `building`.
+- Las variables de entorno se guardan en texto plano en Postgres y `GET /apps/{id}/env`
+  las devuelve con su valor: la API aún no tiene autenticación. Tampoco admiten
+  saltos de línea ni la clave `PORT`.
 - La API de administración de Caddy (:2019) no tiene autenticación; solo es
   accesible desde la propia máquina (`network_mode: host`).
 
