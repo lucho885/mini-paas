@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"maps"
+	"os"
 	"os/exec"
+	"slices"
 	"strings"
 )
 
@@ -19,17 +22,57 @@ func (c *Client) Build(ctx context.Context, contextDir, tag string) error {
 	return err
 }
 
-// Run arranca un contenedor en segundo plano y devuelve su ID.
-func (c *Client) Run(ctx context.Context, tag, name string, hostPort, containerPort int) (string, error) {
+// Run arranca un contenedor en segundo plano y devuelve su ID. env son las
+// variables de entorno que recibirá la app (puede ser nil).
+func (c *Client) Run(ctx context.Context, tag, name string, hostPort, containerPort int, env map[string]string) (string, error) {
 	// --restart unless-stopped: Docker lo vuelve a arrancar tras un reinicio del
 	// equipo o del daemon, salvo que lo hayamos parado nosotros con Stop.
-	out, err := c.run(ctx, "run", "-d", "--name", name,
+	args := []string{"run", "-d", "--name", name,
 		"--restart", "unless-stopped",
-		"-p", fmt.Sprintf("%d:%d", hostPort, containerPort), tag)
+		"-p", fmt.Sprintf("%d:%d", hostPort, containerPort)}
+
+	// Las variables van en un archivo temporal (--env-file) y no como "-e K=V":
+	// los argumentos de un comando son visibles para cualquiera con `ps`, y
+	// aquí pueden viajar secretos.
+	if len(env) > 0 {
+		path, err := writeEnvFile(env)
+		if err != nil {
+			return "", err
+		}
+		defer os.Remove(path) // docker ya leyó el archivo cuando `run` termina
+		args = append(args, "--env-file", path)
+	}
+	args = append(args, tag)
+
+	out, err := c.run(ctx, args...)
 	if err != nil {
 		return "", err
 	}
 	return strings.TrimSpace(out), nil // docker imprime el ID del contenedor
+}
+
+// writeEnvFile guarda las variables en un archivo temporal con formato
+// CLAVE=valor, una por línea, y devuelve su ruta. os.CreateTemp lo crea con
+// permisos 0600: solo el usuario que corre el servidor puede leerlo.
+func writeEnvFile(env map[string]string) (string, error) {
+	f, err := os.CreateTemp("", "paas-env-*")
+	if err != nil {
+		return "", fmt.Errorf("crear archivo de variables: %w", err)
+	}
+	// Los maps de Go se recorren en orden aleatorio; ordenamos las claves para
+	// que el archivo sea siempre igual (más fácil de depurar).
+	for _, k := range slices.Sorted(maps.Keys(env)) {
+		if _, err := fmt.Fprintf(f, "%s=%s\n", k, env[k]); err != nil {
+			f.Close()
+			os.Remove(f.Name())
+			return "", fmt.Errorf("escribir archivo de variables: %w", err)
+		}
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(f.Name())
+		return "", fmt.Errorf("cerrar archivo de variables: %w", err)
+	}
+	return f.Name(), nil
 }
 
 // Stop detiene y elimina el contenedor.

@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -115,7 +116,16 @@ func (d *Deployer) deploy(ctx context.Context, a app.App, dep app.Deployment) er
 	}
 
 	name := fmt.Sprintf("paas-%s-%d", a.Name, dep.ID)
-	containerID, err := d.docker.Run(ctx, tag, name, hostPort, containerPort)
+	// Variables configuradas para la app, más PORT, que fija la plataforma para
+	// que la app sepa en qué puerto escuchar. Se leen aquí, justo antes de
+	// arrancar, para que cuenten los últimos cambios.
+	env, err := d.apps.GetEnv(ctx, a.ID)
+	if err != nil {
+		return err
+	}
+	env["PORT"] = strconv.Itoa(containerPort)
+
+	containerID, err := d.docker.Run(ctx, tag, name, hostPort, containerPort, env)
 	if err != nil {
 		return err
 	}
