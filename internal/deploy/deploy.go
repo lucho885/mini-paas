@@ -148,6 +148,34 @@ func (d *Deployer) deploy(ctx context.Context, a app.App, dep app.Deployment) er
 	return nil
 }
 
+// Teardown deja de publicar la app: quita su ruta de Caddy y para el contenedor
+// activo. Se llama antes de borrar la app de la base de datos.
+//
+// Los errores se registran pero no se devuelven: que Caddy o Docker estén
+// caídos no debe impedir que el usuario borre su app. El orden importa: primero
+// la ruta, luego el contenedor, para no servir un 502 entre un paso y otro.
+func (d *Deployer) Teardown(ctx context.Context, a app.App) {
+	log := d.logger.With("app", a.Name)
+
+	if err := d.proxy.RemoveRoute(ctx, a.Name+"."+d.domain); err != nil {
+		log.Warn("quitar ruta", "error", err)
+	}
+
+	running, err := d.apps.LatestRunning(ctx, a.ID)
+	if errors.Is(err, app.ErrNotFound) {
+		return // nunca se desplegó o ya estaba parada
+	}
+	if err != nil {
+		log.Warn("buscar deployment activo", "error", err)
+		return
+	}
+	if running.ContainerID != nil {
+		if err := d.docker.Stop(ctx, *running.ContainerID); err != nil {
+			log.Warn("parar contenedor", "container", *running.ContainerID, "error", err)
+		}
+	}
+}
+
 // gitClone clona solo el último commit (--depth 1), que es más rápido.
 func gitClone(ctx context.Context, repoURL, dir string) error {
 	cmd := exec.CommandContext(ctx, "git", "clone", "--depth", "1", repoURL, dir)

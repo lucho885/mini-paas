@@ -109,7 +109,20 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	err := h.apps.Delete(r.Context(), id)
+	a, err := h.apps.Get(r.Context(), id)
+	if errors.Is(err, app.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "app no encontrada")
+		return
+	}
+	if err != nil {
+		h.internalError(w, err)
+		return
+	}
+
+	// Primero se apaga lo que está publicado y luego se borra la fila.
+	h.deployer.Teardown(r.Context(), a)
+
+	err = h.apps.Delete(r.Context(), id)
 	if errors.Is(err, app.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "app no encontrada")
 		return
