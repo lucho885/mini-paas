@@ -148,6 +148,51 @@ func (d *Deployer) deploy(ctx context.Context, a app.App, dep app.Deployment) er
 	return nil
 }
 
+// Reconcile alinea la realidad con la base de datos. La base de datos es la
+// fuente de verdad de qué debería estar publicado, pero Caddy guarda sus rutas
+// en memoria (se pierden si se reinicia) y los contenedores pueden haber muerto
+// (reinicio del equipo). Para cada deployment marcado running:
+//   - si su contenedor sigue vivo, vuelve a registrar su ruta en Caddy;
+//   - si no, lo marca stopped para que la base de datos diga la verdad.
+//
+// Es seguro ejecutarlo varias veces: SetRoute es idempotente.
+func (d *Deployer) Reconcile(ctx context.Context) {
+	running, err := d.apps.ListRunning(ctx)
+	if err != nil {
+		d.logger.Error("reconciliar: listar deployments", "error", err)
+		return
+	}
+
+	restored, stopped := 0, 0
+	for _, r := range running {
+		log := d.logger.With("app", r.AppName, "deployment", r.ID)
+		if r.ContainerID == nil || r.HostPort == nil {
+			continue // no debería pasar: running siempre guarda ambos
+		}
+
+		alive, err := d.docker.IsRunning(ctx, *r.ContainerID)
+		if err != nil {
+			log.Warn("reconciliar: consultar contenedor", "error", err)
+			continue // no sabemos su estado: mejor no tocar nada
+		}
+		if !alive {
+			if err := d.apps.UpdateStatus(ctx, r.ID, app.StatusStopped); err != nil {
+				log.Warn("reconciliar: marcar stopped", "error", err)
+				continue
+			}
+			stopped++
+			continue
+		}
+
+		if err := d.proxy.SetRoute(ctx, r.AppName+"."+d.domain, *r.HostPort); err != nil {
+			log.Warn("reconciliar: registrar ruta", "error", err)
+			continue
+		}
+		restored++
+	}
+	d.logger.Info("reconciliación terminada", "rutas_restauradas", restored, "marcados_stopped", stopped)
+}
+
 // Teardown deja de publicar la app: quita su ruta de Caddy y para el contenedor
 // activo. Se llama antes de borrar la app de la base de datos.
 //

@@ -98,6 +98,42 @@ func (r *Repository) LatestRunning(ctx context.Context, appID int64) (Deployment
 	return d, nil
 }
 
+// RunningDeployment es un deployment activo junto al nombre de su app.
+// Deployment va "embebido" (sin nombre de campo): sus campos y métodos se
+// pueden usar directamente, r.HostPort en vez de r.Deployment.HostPort. Es la
+// forma de Go de reutilizar un struct sin herencia.
+type RunningDeployment struct {
+	AppName string
+	Deployment
+}
+
+// ListRunning devuelve los deployments marcados como running, de los más
+// antiguos a los más recientes.
+func (r *Repository) ListRunning(ctx context.Context) ([]RunningDeployment, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT d.id, d.app_id, d.status, d.container_id, d.host_port, d.created_at, a.name
+		 FROM deployments d JOIN apps a ON a.id = d.app_id
+		 WHERE d.status = $1 ORDER BY d.id`, StatusRunning)
+	if err != nil {
+		return nil, fmt.Errorf("listar deployments activos: %w", err)
+	}
+	defer rows.Close()
+
+	var out []RunningDeployment
+	for rows.Next() {
+		var rd RunningDeployment
+		err := rows.Scan(&rd.ID, &rd.AppID, &rd.Status, &rd.ContainerID, &rd.HostPort, &rd.CreatedAt, &rd.AppName)
+		if err != nil {
+			return nil, fmt.Errorf("leer deployment activo: %w", err)
+		}
+		out = append(out, rd)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("recorrer deployments activos: %w", err)
+	}
+	return out, nil
+}
+
 // ListDeployments devuelve los deployments de la app, del más reciente al más
 // antiguo.
 func (r *Repository) ListDeployments(ctx context.Context, appID int64) ([]Deployment, error) {

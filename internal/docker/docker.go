@@ -46,6 +46,20 @@ func (c *Client) Logs(ctx context.Context, containerID string) (string, error) {
 	return c.run(ctx, "logs", "--tail", "200", containerID)
 }
 
+// IsRunning dice si el contenedor existe y está en ejecución. Si Docker no lo
+// conoce (borrado a mano, por ejemplo) devuelve false sin error; cualquier otro
+// fallo (daemon caído...) sí se devuelve, para no confundirlo con "parado".
+func (c *Client) IsRunning(ctx context.Context, containerID string) (bool, error) {
+	out, err := c.run(ctx, "inspect", "-f", "{{.State.Running}}", containerID)
+	if err != nil {
+		if strings.Contains(err.Error(), "No such") {
+			return false, nil
+		}
+		return false, err
+	}
+	return strings.TrimSpace(out) == "true", nil
+}
+
 // run ejecuta `docker <args...>` y devuelve stdout.
 // Si falla, envuelve el error con %w e incluye stderr para poder diagnosticar.
 func (c *Client) run(ctx context.Context, args ...string) (string, error) {

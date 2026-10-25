@@ -71,7 +71,15 @@ func main() {
 	deployer := deploy.NewDeployer(apps, docker.NewClient(), caddy, domain, "", logger)
 	api.NewHandler(apps, deployer, logger).Register(mux)
 
-	addr := ":8080"
+	// En segundo plano para que el servidor arranque ya; Reconcile puede tardar
+	// si hay que consultar varios contenedores.
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		deployer.Reconcile(ctx)
+	}()
+
+	addr := getEnv("PAAS_ADDR", ":8080")
 	logger.Info("servidor escuchando", "addr", addr)
 
 	// ListenAndServe bloquea hasta que falle. Devuelve un error, no lanza
