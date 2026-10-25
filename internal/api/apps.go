@@ -67,6 +67,12 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Primero lo barato (el nombre), luego lo que hace una llamada de red (el repo).
+	if err := deploy.ValidateName(req.Name); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	// Rechazamos aquí un repo inexistente, en vez de descubrirlo al desplegar.
 	if err := deploy.CheckRepo(r.Context(), req.RepoURL); err != nil {
 		switch {

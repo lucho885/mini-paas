@@ -32,6 +32,21 @@ const (
 // solo admiten minúsculas, números y guiones.
 var validName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
+// maxNameLen: una etiqueta DNS (cada parte de un dominio) admite 63 caracteres.
+const maxNameLen = 63
+
+var ErrInvalidName = errors.New("name inválido: usa minúsculas, números y guiones, sin empezar por guion (máx. 63 caracteres)")
+
+// ValidateName comprueba que el nombre sirva como subdominio, tag de imagen y
+// nombre de contenedor. Se usa al crear la app (para fallar pronto) y al
+// desplegar (por si hay apps creadas antes de que existiera esta regla).
+func ValidateName(name string) error {
+	if len(name) > maxNameLen || !validName.MatchString(name) {
+		return ErrInvalidName
+	}
+	return nil
+}
+
 type Deployer struct {
 	apps    *app.Repository
 	docker  *docker.Client
@@ -77,8 +92,8 @@ func (d *Deployer) Start(a app.App, dep app.Deployment) {
 
 // deploy hace el trabajo real, en orden, y devuelve el primer error que ocurra.
 func (d *Deployer) deploy(ctx context.Context, a app.App, dep app.Deployment) error {
-	if !validName.MatchString(a.Name) {
-		return fmt.Errorf("nombre de app inválido %q: usa minúsculas, números y guiones", a.Name)
+	if err := ValidateName(a.Name); err != nil {
+		return fmt.Errorf("app %q: %w", a.Name, err)
 	}
 	if !strings.HasPrefix(a.RepoURL, "https://") {
 		return fmt.Errorf("repo_url debe empezar por https://")

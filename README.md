@@ -49,7 +49,8 @@ Go 1.22+, Docker y git.
 - Debe tener un `Dockerfile` en la raíz.
 - La app debe escuchar en el puerto **8080** dentro del contenedor. La plataforma
   también le pasa `PORT=8080` como variable de entorno.
-- El nombre solo admite minúsculas, números y guiones (es parte del subdominio).
+- El nombre solo admite minúsculas, números y guiones, sin empezar por guion y con
+  un máximo de 63 caracteres (es parte del subdominio). `POST /apps` responde 400 si no cumple.
 
 ## Probar
     curl localhost:8080/healthz
