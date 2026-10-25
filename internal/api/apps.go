@@ -38,6 +38,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /apps/{id}", h.delete)
 	mux.HandleFunc("POST /apps/{id}/deploy", h.startDeploy)
 	mux.HandleFunc("GET /apps/{id}/deployments", h.listDeployments)
+	mux.HandleFunc("GET /apps/{id}/logs", h.logs)
 	mux.HandleFunc("GET /apps/{id}/env", h.getEnv)
 	mux.HandleFunc("PUT /apps/{id}/env", h.putEnv)
 }

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -84,9 +85,22 @@ func (c *Client) Stop(ctx context.Context, containerID string) error {
 	return err
 }
 
-// Logs devuelve las últimas 200 líneas del contenedor.
-func (c *Client) Logs(ctx context.Context, containerID string) (string, error) {
-	return c.run(ctx, "logs", "--tail", "200", containerID)
+// Logs devuelve las últimas tail líneas del contenedor, con lo que la app
+// escribió por stdout y por stderr.
+//
+// docker logs reparte la salida de la app en los dos streams, y muchas apps
+// (y casi todos los errores) escriben por stderr. Con c.run solo veríamos
+// stdout. Aquí ambos apuntan al MISMO buffer: os/exec entonces usa un único
+// pipe y las líneas conservan su orden original.
+func (c *Client) Logs(ctx context.Context, containerID string, tail int) (string, error) {
+	cmd := exec.CommandContext(ctx, "docker", "logs", "--tail", strconv.Itoa(tail), containerID)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("docker logs: %w: %s", err, strings.TrimSpace(out.String()))
+	}
+	return out.String(), nil
 }
 
 // IsRunning dice si el contenedor existe y está en ejecución. Si Docker no lo

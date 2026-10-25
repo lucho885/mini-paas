@@ -203,6 +203,19 @@ func (d *Deployer) Reconcile(ctx context.Context) {
 	d.logger.Info("reconciliación terminada", "rutas_restauradas", restored, "marcados_stopped", stopped)
 }
 
+// Logs devuelve las últimas tail líneas del contenedor activo de la app.
+// Devuelve app.ErrNotFound si la app no tiene ningún contenedor en ejecución.
+func (d *Deployer) Logs(ctx context.Context, appID int64, tail int) (string, error) {
+	running, err := d.apps.LatestRunning(ctx, appID)
+	if err != nil {
+		return "", err // incluye app.ErrNotFound, que el handler traduce a 404
+	}
+	if running.ContainerID == nil {
+		return "", app.ErrNotFound
+	}
+	return d.docker.Logs(ctx, *running.ContainerID, tail)
+}
+
 // Teardown deja de publicar la app: quita su ruta de Caddy y para el contenedor
 // activo. Se llama antes de borrar la app de la base de datos.
 //
