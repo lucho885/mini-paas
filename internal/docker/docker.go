@@ -30,7 +30,9 @@ func (c *Client) Run(ctx context.Context, tag, name string, hostPort, containerP
 	// equipo o del daemon, salvo que lo hayamos parado nosotros con Stop.
 	args := []string{"run", "-d", "--name", name,
 		"--restart", "unless-stopped",
-		"-p", fmt.Sprintf("%d:%d", hostPort, containerPort)}
+		// 127.0.0.1: el puerto solo es alcanzable desde esta máquina (Caddy). Sin
+		// esa IP, Docker lo abriría en todas las interfaces y se saltarían el proxy.
+		"-p", fmt.Sprintf("127.0.0.1:%d:%d", hostPort, containerPort)}
 
 	// Las variables van en un archivo temporal (--env-file) y no como "-e K=V":
 	// los argumentos de un comando son visibles para cualquiera con `ps`, y
