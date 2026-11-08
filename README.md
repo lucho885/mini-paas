@@ -1,7 +1,7 @@
 # mini-paas
 
 Mini plataforma tipo Heroku/Vercel escrita en Go con la librería estándar.
-Proyecto de aprendizaje: registras una app con la URL de un repositorio y la
+Registras una app con la URL de un repositorio y la
 plataforma la clona, la construye con Docker y la publica detrás de Caddy en
 `<nombre>.localhost`.
 
